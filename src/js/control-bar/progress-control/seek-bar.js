@@ -269,61 +269,64 @@ class SeekBar extends Slider {
    * @param {EventTarget~Event} event
    *        The `mousemove` event that caused this to run.
    * @param {boolean} mouseDown this is a flag that should be set to true if `handleMouseMove` is called directly. It allows us to skip things that should not happen if coming from mouse down but should happen on regular mouse move handler. Defaults to false
+   * @param {boolean} mouseUp this is a flag that should be set to true if `handleMouseMove` is called directly. It allows us to skip things that should not happen if coming from mouse up but should happen on regular mouse move handler. Defaults to false
    *
    * @listens mousemove
    */
-  handleMouseMove(event, mouseDown = false) {
-    if (!Dom.isSingleLeftClick(event)) {
-      return;
-    }
-
-    if (!mouseDown && !this.player_.scrubbing()) {
-      this.player_.scrubbing(true);
-    }
-
-    let newTime;
-    const distance = this.calculateDistance(event);
-    const liveTracker = this.player_.liveTracker;
-
-    if (!liveTracker || !liveTracker.isLive()) {
-      newTime = distance * this.player_.duration();
-
-      // Don't let video end while scrubbing.
-      if (newTime === this.player_.duration()) {
-        newTime = newTime - 0.1;
-      }
-    } else {
-
-      if (distance >= 0.99) {
-        liveTracker.seekToLiveEdge();
+  handleMouseMove(event, mouseDown = false, mouseUp = false) {
+    if (!this.player_.scrubbing() && mouseUp) {
+      if (!Dom.isSingleLeftClick(event)) {
         return;
       }
-      const seekableStart = liveTracker.seekableStart();
-      const seekableEnd = liveTracker.liveCurrentTime();
 
-      newTime = seekableStart + (distance * liveTracker.liveWindow());
-
-      // Don't let video end while scrubbing.
-      if (newTime >= seekableEnd) {
-        newTime = seekableEnd;
+      if (!mouseDown && !this.player_.scrubbing()) {
+        this.player_.scrubbing(true);
       }
 
-      // Compensate for precision differences so that currentTime is not less
-      // than seekable start
-      if (newTime <= seekableStart) {
-        newTime = seekableStart + 0.1;
+      let newTime;
+      const distance = this.calculateDistance(event);
+      const liveTracker = this.player_.liveTracker;
+
+      if (!liveTracker || !liveTracker.isLive()) {
+        newTime = distance * this.player_.duration();
+
+        // Don't let video end while scrubbing.
+        if (newTime === this.player_.duration()) {
+          newTime = newTime - 0.1;
+        }
+      } else {
+
+        if (distance >= 0.99) {
+          liveTracker.seekToLiveEdge();
+          return;
+        }
+        const seekableStart = liveTracker.seekableStart();
+        const seekableEnd = liveTracker.liveCurrentTime();
+
+        newTime = seekableStart + (distance * liveTracker.liveWindow());
+
+        // Don't let video end while scrubbing.
+        if (newTime >= seekableEnd) {
+          newTime = seekableEnd;
+        }
+
+        // Compensate for precision differences so that currentTime is not less
+        // than seekable start
+        if (newTime <= seekableStart) {
+          newTime = seekableStart + 0.1;
+        }
+
+        // On android seekableEnd can be Infinity sometimes,
+        // this will cause newTime to be Infinity, which is
+        // not a valid currentTime.
+        if (newTime === Infinity) {
+          return;
+        }
       }
 
-      // On android seekableEnd can be Infinity sometimes,
-      // this will cause newTime to be Infinity, which is
-      // not a valid currentTime.
-      if (newTime === Infinity) {
-        return;
-      }
+      // Set new time (tell player to seek to new time)
+      this.userSeek_(newTime);
     }
-
-    // Set new time (tell player to seek to new time)
-    this.userSeek_(newTime);
   }
 
   enable() {
@@ -364,6 +367,7 @@ class SeekBar extends Slider {
       event.stopPropagation();
     }
     this.player_.scrubbing(false);
+    this.handleMouseMove(event, false, true);
 
     /**
      * Trigger timeupdate because we're done seeking and the time has changed.
